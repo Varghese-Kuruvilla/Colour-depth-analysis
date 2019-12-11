@@ -178,17 +178,17 @@ class analyzergb(Imageio):
 
 
     def test_image(self):
-        '''Function to analyze different colourspaces and choose the best among them'''
+        '''Function to analyze different colourspaces and choose the best among them
+        Find contours from the respective channel and the mask image'''
         
-        ### Canny Edge detection on the V channel in HSV colourspace ###
+        ### Extracing Hue channel from the HSV Image ###
         test_image = np.copy(self.rgb_image)
         cnt_image = np.copy(test_image)
         img_hsv = cv2.cvtColor(self.rgb_image,cv2.COLOR_BGR2HSV)
-        #self.display(img_hsv,"HSV Image")
         channel = img_hsv[:,:,0]  #But here we are working on the intensity/brightness alone, not the colour component
         self.display(channel,"V Channel")
 
-        #Plotting histogram of the V Channel
+        #Plotting histogram of the Hue Channel
 
         hist = cv2.calcHist([channel],[0],None,[256],[0,256])
         
@@ -197,7 +197,20 @@ class analyzergb(Imageio):
         plt.show()
 
         
+        #Obtaining contour from the mask Image
+        cnt , hierarchy = cv2.findContours(channel , cv2.RETR_TREE , cv2.CHAIN_APPROX_NONE)
+        print("hierarchy",hierarchy)
+        print("hierarchy.shape",hierarchy.shape)
 
+        cv2.drawContours(cnt_image,cnt,-1,(0,255,0),3)
+        self.display(cnt_image,"Contours on image")
+        for i in range(0,len(hierarchy[0])):
+            print("hierarchy[0][i]:",hierarchy[0][i])
+            if(hierarchy[0][i][3] == -1):
+                print("cnt[i]:",cnt[i])
+                cv2.drawContours(cnt_image,cnt[i],0,(0,255,0),3)
+               
+        self.display(cnt_image, "Contour at level 0")
         #Background Subtraction with the V channel in HSV colourspace 
         std_v = 33.0   #TODO:This should be calculated dynamically
         
@@ -231,83 +244,66 @@ class analyzergb(Imageio):
         kernel_dilation = np.ones((5,5),np.uint8)
         mask_dilation = cv2.dilate(mask_opening,kernel_dilation,iterations = 1)
 
-		#Display Mask images
+	#Display Mask images
         self.display(mask_image, "Mask Image")
         self.display(mask_opening,"Mask Image opening")
         self.display(mask_dilation,"Mask Dilation")
 
-        #Obtaining contour from the mask Image
-        cnt , hierarchy = cv2.findContours(mask_dilation , cv2.RETR_TREE , cv2.CHAIN_APPROX_SIMPLE)
-
-        #Finding index of the largest contour
-        areas = [cv2.contourArea(c) for c in cnt]
-        max_index = np.argmax(areas)
-        largest_cnt = cnt[max_index]
-        cv2.drawContours(cnt_image, [largest_cnt], 0, (0,255,0), 3)
-        self.display(cnt_image, "Largest contour")
-
-		####-----------------------------------------------------------------------------------------------------####
-		#V channel cannot be used as it depends solely on intensity/brightness
-		#Background subtraction does not work with Hue channel in HSV
-
-        #Applying BilateralFiltering to remove noise and preserve edge information
-        blur_img = cv2.bilateralFilter(channel,7,80,80) #TODO: Parameters for bilateralFilter function
-        self.display(blur_img,"Blurred V Channel")
-
-        #Low and high thresholds for canny edge detection
-        sigma = 0.33
-        mean = np.mean(blur_img)
-        low_threshold = int(max(0,(1.0-sigma)*mean))
-        high_threshold = int(min(255,(1.0+sigma)*mean))
-        print("low threshold:",low_threshold)
-        print("high threshold:",high_threshold)
-        test_image = cv2.Canny(blur_img,low_threshold,high_threshold)
-        self.display(test_image,"Edge Image")
-
-            
 
     def find_edge(self):
         '''Function to find edge image using canny
+        Followed by using Hough Lines to find straight lines from the edge image
         Stores the result in self.edge_image'''
-
-
-
-        ###Background Subtracting on the V channel in HSV colourspace ###
 
 
         img_gray = cv2.cvtColor(self.rgb_image,cv2.COLOR_BGR2GRAY)#Converting to grayscale
         self.hough_image = np.copy(self.rgb_image)
         self.edge_image = np.zeros_like(img_gray)
 
-        blur_img = cv2.bilateralFilter(img_gray,7,50,10) #Bilateral Filtering: A higher value is preferred for sigmacolour and a lower value for sigma space
+                
+        #hist_eq = cv2.equalizeHist(img_gray)
+        #self.display(hist_eq,"Result of histogram equalization")
+       
+        #Bilateral Filtering: A higher value is preferred for sigmacolour and a lower value for sigma space
+        blur_img = cv2.bilateralFilter(img_gray,7,80,80) 
+        self.display(blur_img,"Bilateral Filtering") 
+
+        #OTSU Thresholding for determining adaptive thresholds for canny edge detection
+        #retval, thresh_img = cv2.threshold(blur_img,0,255,cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        #high_threshold = retval
+        #low_threshold = 0.5 * retval
+       
+        #Adaptive thresholds for Canny
         sigma = 0.33
         mean = np.mean(blur_img)
         low_threshold = int(max(0,(1.0-sigma)*mean))
         high_threshold = int(min(255,(1.0+sigma)*mean))
 
-        low_threshold = 50
-        high_threshold = 100
-        print("low_threshold:",low_threshold)
-        print("high_threshold:",high_threshold)
-        self.edge_image = cv2.Canny(blur_img,low_threshold,high_threshold)
-
+        #Canny edge detection
+        self.edge_image = cv2.Canny(blur_img,low_threshold,high_threshold,apertureSize=3)
         self.display(self.edge_image,"Edge Image")
 
-        #lines = cv2.HoughLines(self.edge_image,100,np.pi/90,1)
+        #Line detection using HoughLines: Relaxed the final parameter
+        lines = cv2.HoughLines(self.edge_image,1,np.pi/90,40)
+        print("lines:",lines)
+        print("lines.shape:",lines.shape)
+        for i in range(0,lines.shape[0]):
+            rho = lines[i][0][0]
+            theta = lines[i][0][1]
+            print("rho:",rho)
+            print("theta:",theta)
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a*rho
+            y0 = b*rho
+            x1 = int(x0 + 1000*(-b))
+            y1 = int(y0 + 1000*(a))
+            x2 = int(x0 - 1000*(-b))
+            y2 = int(y0 - 1000*(a))
 
-        #for rho,theta in lines[0]:
-        #    a = np.cos(theta)
-        #    b = np.sin(theta)
-        #    x0 = a*rho
-        #    y0 = b*rho
-        #    x1 = int(x0 + 1000*(-b))
-        #    y1 = int(y0 + 1000*(a))
-        #    x2 = int(x0 - 1000*(-b))
-        #    y2 = int(y0 - 1000*(a))
+            cv2.line(self.hough_image,(x1,y1),(x2,y2),(0,0,255),2)
 
-        #    cv2.line(self.hough_image,(x1,y1),(x2,y2),(0,0,255),2)
-
-        #self.display(self.hough_image,"Hough Line Image")
+        self.display(self.hough_image,"Hough Line Image")
 
 
 if __name__ == '__main__':
@@ -316,7 +312,7 @@ if __name__ == '__main__':
     #(Green Brick): file:///home/varghese/brick_data/Dec_6/Dec_6_5/rgb_image_137.jpg , file:///home/varghese/brick_data/Dec_6/Dec_6_5/depth_image_137.jpg 
 
     ###Analyze the depth Image 
-    depth_obj = analyzedepth()
+    #depth_obj = analyzedepth()
     
     #Orange Brick
     #depth_obj.load_image("/home/varghese/brick_data/Dec_6/Dec_6_3/rgb_image_787.jpg", "/home/varghese/brick_data/Dec_6/Dec_6_3/depth_image_787.jpg") #Loading the rgb and depth Images
@@ -339,16 +335,17 @@ if __name__ == '__main__':
     rgb_obj = analyzergb()
 
     #Orange Brick
-    #rgb_obj.load_image("/home/varghese/brick_data/Dec_6/Dec_6_3/rgb_image_787.jpg", "/home/varghese/brick_data/Dec_6/Dec_6_3/depth_image_787.jpg") #Loading the rgb and depth Images
+    rgb_obj.load_image("/home/varghese/brick_data/Dec_6/cropped_brick_data/cropped_rgb_image_787.jpg", "/home/varghese/brick_data/Dec_6/cropped_brick_data/cropped_depth_image_787.jpg") #Loading the rgb and depth Images
+    rgb_obj.find_edge()
 
     #Red Brick
-    #rgb_obj.load_image("/home/varghese/brick_data/Dec_6/cropped_brick_data/rgb_image_377.jpg","/home/varghese/brick_data/Dec_6/cropped_brick_data/depth_image_377.jpg")
-
+    rgb_obj.load_image("/home/varghese/brick_data/Dec_6/cropped_brick_data/rgb_image_377.jpg","/home/varghese/brick_data/Dec_6/cropped_brick_data/depth_image_377.jpg")
+    rgb_obj.find_edge()
     #Blue Brick
-    #rgb_obj.load_image("/home/varghese/brick_data/Dec_6/Dec_6_4/rgb_image_721.jpg", "/home/varghese/brick_data/Dec_6/Dec_6_4/depth_image_721.jpg") 
+    rgb_obj.load_image("/home/varghese/brick_data/Dec_6/cropped_brick_data/cropped_rgb_image_721.jpg", "/home/varghese/brick_data/Dec_6/cropped_brick_data/cropped_depth_image_721.jpg") 
 
     #Green Brick
-    rgb_obj.load_image("/home/varghese/brick_data/Dec_6/Dec_6_5/rgb_image_137.jpg", "/home/varghese/brick_data/Dec_6/Dec_6_5/depth_image_137.jpg")
+    #rgb_obj.load_image("/home/varghese/brick_data/Dec_6/Dec_6_5/rgb_image_137.jpg", "/home/varghese/brick_data/Dec_6/Dec_6_5/depth_image_137.jpg")
     #rgb_obj.yuv_analyze()
-    #rgb_obj.find_edge()
+    rgb_obj.find_edge()
     rgb_obj.test_image()

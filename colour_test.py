@@ -81,6 +81,7 @@ def edge_detect(img):
     #print("rho_ls:",rho_ls)
     #print("theta_ls:",theta_ls)
 
+
     for i in range(0,len(rho_ls)):
         rho = rho_ls[i]
         theta = theta_ls[i]
@@ -100,12 +101,69 @@ def edge_detect(img):
     print("len(theta_ls):",len(theta_ls))
    
 
+    #Sorting
+    for i in range(0,len(theta_ls)):
+        for j in range(0,(len(theta_ls)-1)):
+            if(theta_ls[j] > theta_ls[j+1]):
+
+                temp_theta = theta_ls[j]
+                theta_ls[j] = theta_ls[j+1]
+                theta_ls[j+1] = temp_theta
+
+                temp_rho = rho_ls[j]
+                rho_ls[j] = rho_ls[j+1]
+                rho_ls[j+1] = temp_rho
+
+
+    #Cluster based on largest gaps in the sorted data
+    largest_gap = 0
+    break_index = 0
+    for i in range(0,(len(theta_ls)-1)):
+        if(abs(theta_ls[i+1] - theta_ls[i]) > largest_gap):
+            largest_gap = abs(theta_ls[i+1] - theta_ls[i])
+            break_index = i
+
+
+    
     #Try to obtain only extreme line segments from this
     line_img_1 = np.copy(img)
     largest_rho = 0.0
     largest_rho_ls = []
     largest_theta_ls = []
-    for i in range(0,len(theta_ls)):
+    for i in range(0,break_index):
+        for j in range(i,break_index):
+            if((abs(theta_ls[i] - theta_ls[j]))<=0.3):
+                if((abs(rho_ls[i] - rho_ls[j])) > largest_rho):
+                    largest_rho = abs(rho_ls[i] - rho_ls[j])
+                    largest_rho_ls = []
+                    largest_theta_ls = []
+                    largest_rho_ls.append(rho_ls[i])
+                    largest_theta_ls.append(theta_ls[i])
+                    largest_rho_ls.append(rho_ls[j])
+                    largest_theta_ls.append(theta_ls[j])
+
+
+    #Drawing parallel lines with largest seperation on the image
+    for i in range(0,len(largest_rho_ls)):
+        rho = largest_rho_ls[i]
+        theta = largest_theta_ls[i]
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + 1000*(-b))
+        y1 = int(y0 + 1000*(a))
+        x2 = int(x0 - 1000*(-b))
+        y2 = int(y0 - 1000*(a))
+        cv2.line(line_img_1,(x1,y1),(x2,y2),(0,0,255),2)
+
+
+
+    largest_rho = 0.0
+    largest_rho_ls = []
+    largest_theta_ls = []
+
+    for i in range(break_index,len(theta_ls)):
         for j in range(i,len(theta_ls)):
             if((abs(theta_ls[i] - theta_ls[j]))<=0.3):
                 if((abs(rho_ls[i] - rho_ls[j])) > largest_rho):
@@ -131,6 +189,7 @@ def edge_detect(img):
         x2 = int(x0 - 1000*(-b))
         y2 = int(y0 - 1000*(a))
         cv2.line(line_img_1,(x1,y1),(x2,y2),(0,0,255),2)
+
 
     display(line_img_1,"Considering only extreme lines")
 
@@ -275,6 +334,7 @@ def display(img,txt):
 if __name__ == '__main__':
     
     #rgb_img = cv2.imread("/home/varghese/brick_data/data_dec_23/cropped_images/rgb_image_24.jpg")
-    rgb_img = cv2.imread("/home/varghese/brick_data/data_dec_23/cropped_images/rgb_image_24.jpg")
+    #rgb_img = cv2.imread("/home/varghese/brick_data/data_dec_23/cropped_images/rgb_image_24.jpg")
+    rgb_img = cv2.imread("/home/varghese/brick_data/data_dec_23/cropped_images/rgb_image_33.jpg")
     #color_analyze(rgb_img)    
     edge_detect(rgb_img)

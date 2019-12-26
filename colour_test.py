@@ -4,6 +4,7 @@ sys.path.remove("/opt/ros/kinetic/lib/python2.7/dist-packages")
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
 
 
 def breakpoint():
@@ -57,16 +58,21 @@ def edge_detect(img):
     for element in lines:
         rho = element[0][0]
         theta = element[0][1]
+        theta_degrees = np.degrees(theta)
+        flag = 0
         #Try to find lines that are perpendicular to this
-        for (i,element_1) in enumerate(lines_small):
+        for element_1 in lines_small:
+            flag = 0
             rho_1 = element_1[0][0]
             theta_1 = element_1[0][1]
+            theta_1_degrees = np.degrees(theta_1)
             if (((theta_1 - theta) <= 1.58) and ((theta_1 - theta) >= 1.55)):
-                #print("theta_1:",theta_1)
-                #print("theta:",theta)
-                if(i==0):
+                #print("theta_degrees:",theta_degrees)
+                #print("theta_1_degrees:",theta_1_degrees)
+                if(flag==0):
                     rho_ls.append(rho)
                     theta_ls.append(theta)
+                    flag = 1
                 
                 rho_ls.append(rho_1)
                 theta_ls.append(theta_1)
@@ -86,13 +92,48 @@ def edge_detect(img):
         y1 = int(y0 + 1000*(a))
         x2 = int(x0 - 1000*(-b))
         y2 = int(y0 - 1000*(a))
-        if(i <= 400):
-            cv2.line(line_img,(x1,y1),(x2,y2),(0,0,255),2)
+        cv2.line(line_img,(x1,y1),(x2,y2),(0,0,255),2)
 
     display(line_img,"Result of Hough Lines")
 
     print("len(rho_ls):",len(rho_ls))
     print("len(theta_ls):",len(theta_ls))
+   
+
+    #Try to obtain only extreme line segments from this
+    line_img_1 = np.copy(img)
+    largest_rho = 0.0
+    largest_rho_ls = []
+    largest_theta_ls = []
+    for i in range(0,len(theta_ls)):
+        for j in range(i,len(theta_ls)):
+            if((abs(theta_ls[i] - theta_ls[j]))<=0.3):
+                if((abs(rho_ls[i] - rho_ls[j])) > largest_rho):
+                    largest_rho = abs(rho_ls[i] - rho_ls[j])
+                    largest_rho_ls = []
+                    largest_theta_ls = []
+                    largest_rho_ls.append(rho_ls[i])
+                    largest_theta_ls.append(theta_ls[i])
+                    largest_rho_ls.append(rho_ls[j])
+                    largest_theta_ls.append(theta_ls[j])
+
+
+    #Drawing parallel lines with largest seperation on the image
+    for i in range(0,len(largest_rho_ls)):
+        rho = largest_rho_ls[i]
+        theta = largest_theta_ls[i]
+        a = np.cos(theta)
+        b = np.sin(theta)
+        x0 = a*rho
+        y0 = b*rho
+        x1 = int(x0 + 1000*(-b))
+        y1 = int(y0 + 1000*(a))
+        x2 = int(x0 - 1000*(-b))
+        y2 = int(y0 - 1000*(a))
+        cv2.line(line_img_1,(x1,y1),(x2,y2),(0,0,255),2)
+
+    display(line_img_1,"Considering only extreme lines")
+
     
     #cnt_img = np.copy(img)
     #contours, hierarchy = cv2.findContours(edge_img, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
